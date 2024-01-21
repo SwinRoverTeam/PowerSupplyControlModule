@@ -1,4 +1,5 @@
 #include <SPI.h>
+#include "mcp_can.h"
 
 const int SPI_CS_PIN = 17;              // CANBed V1
 
@@ -46,55 +47,63 @@ void loop() {
     unsigned long canId = CAN.getCanId();
 
     unsigned char canCMD = buf[0];
-    
-    if(canId == 0x10) { //Heartbeat
-      //SwinCAN.ReplyHeart(--NodeId--)
-    }
-    else if(canId == 0x30) { //Status
-      //SwinCan.ReplyStatus
-    }
-    else if (canId == 0x50)  {// Relay Control
-      if(buf[7]&0b1 == 1) { //Cycle 5.3V
+
+    switch (canCMD) {
+      case 0x10: 
+        //SwinCan.ReplyHeart(--NodeId--)
+        Serial.println("Reply heart");
+      break;
+      case 0x30:
+        //SwinCan.ReplyStatus(--NodeId--)
+        Serial.println("Reply Status");
+      break;
+      case 0x50:
+        if(buf[7]&0b1 == 1) { //Cycle 5.3V
         digitalWrite(ControlElec, LOW);
         ElecTog = true;
-      }
-      if((buf[7]&0b10) >> 1 == 1) { //Cycle Motor Left
-        digitalWrite(MotorLeft, LOW);
-        MLTog = true;
-      }
-      if((buf[7]&0b100) >> 2 == 1) { //Cycle Motor Right
-        digitalWrite(MotorRight, LOW);
-        MRTog = true;
-      }
-      if((buf[7]&0b1000) >> 3 == 1) { //Cycle Arm 1
-        digitalWrite(Arm1, LOW);
-        A1Tog = true;
-      }
-      if((buf[7]&0b10000) >> 4 == 1) { //Cycle Arm 2
-        digitalWrite(Arm2, LOW);
-        A2Tog = true;
-      }
-      //0.5Hz timer
-      cli();
+        }
+        if((buf[7]&0b10) >> 1 == 1) { //Cycle Motor Left
+          digitalWrite(MotorLeft, LOW);
+          MLTog = true;
+        }
+        if((buf[7]&0b100) >> 2 == 1) { //Cycle Motor Right
+          digitalWrite(MotorRight, LOW);
+          MRTog = true;
+        }
+        if((buf[7]&0b1000) >> 3 == 1) { //Cycle Arm 1
+          digitalWrite(Arm1, LOW);
+          A1Tog = true;
+        }
+        if((buf[7]&0b10000) >> 4 == 1) { //Cycle Arm 2
+          digitalWrite(Arm2, LOW);
+          A2Tog = true;
+        }
+        //0.5Hz timer
+        cli();
 
-      TCCR1A = 0;
-      TCCR1B = 0;
-      TCNT1 = 0;
+        TCCR1A = 0;
+        TCCR1B = 0;
+        TCNT1 = 0;
 
-      OCR1A = 31249;
+        OCR1A = 31249;
 
-      TCCR1B |= (1 << WGM12);
+        TCCR1B |= (1 << WGM12);
 
-      TCCR1B |= (1 << CS12) | (1 << CS10);
+        TCCR1B |= (1 << CS12) | (1 << CS10);
 
-      TIMSK1 |= (1 << OCIE1A);
+        TIMSK1 |= (1 << OCIE1A);
 
-      sei();
-      
-      //SwinCan.ReplyRelay(--NodeId--)
+        sei();
+        
+        //SwinCan.ReplyRelay(--NodeId--)
+        Serial.println("Reply Relay");
+      break;
+      case 0x60:
+        //SwinCan.Error(--NodeId--)
+        Serial.println("Error");
+      break;
     }
   }
-
 }
 
 ISR(TIMER1_COMPA_vect) {
