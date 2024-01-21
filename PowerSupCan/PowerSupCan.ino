@@ -1,18 +1,22 @@
+#include <SPI.h>
+
+const int SPI_CS_PIN = 17;              // CANBed V1
+
 #define ControlElec 4
 #define MotorLeft 5
 #define MotorRight 6
 #define Arm1 8
 #define Arm2 9
 
-MCP_CAN CAN(SPI_CS_PIN);  
+MCP_CAN CAN(SPI_CS_PIN); 
+
+bool ElecTog = false;
+bool MLTog = false;
+bool MRTog = false;
+bool A1Tog = false;
+bool A2Tog = false;
 
 void setup() {
-  bool ElecTog = false;
-  bool MLTog = false;
-  bool MRTog = false;
-  bool A1Tog = false;
-  bool A2Tog = false;
-
   pinMode(ControlElec, OUTPUT);
   pinMode(MotorLeft, OUTPUT); 
   pinMode(MotorRight, OUTPUT); 
@@ -41,7 +45,7 @@ void loop() {
 
     unsigned long canId = CAN.getCanId();
 
-    canCMD = buf[0];
+    unsigned char canCMD = buf[0];
     
     if(canId == 0x10) { //Heartbeat
       //SwinCAN.ReplyHeart(--NodeId--)
@@ -70,6 +74,22 @@ void loop() {
         digitalWrite(Arm2, LOW);
         A2Tog = true;
       }
+      //0.5Hz timer
+      cli();
+
+      TCCR1A = 0;
+      TCCR1B = 0;
+      TCNT1 = 0;
+
+      OCR1A = 31249;
+
+      TCCR1B |= (1 << WGM12);
+
+      TCCR1B |= (1 << CS12) | (1 << CS10);
+
+      TIMSK1 |= (1 << OCIE1A);
+
+      sei();
       
       //SwinCan.ReplyRelay(--NodeId--)
     }
@@ -77,6 +97,25 @@ void loop() {
 
 }
 
-void turnOn() {
-  //
+ISR(TIMER1_COMPA_vect) {
+  if(ElecTog == true) {
+    digitalWrite(ControlElec, HIGH);
+    ElecTog = false;
+  }
+  if(MLTog == true) {
+    digitalWrite(MotorLeft, HIGH);
+    MLTog = false;
+  }
+  if(MRTog == true) {
+    digitalWrite(MotorRight, HIGH);
+    MRTog = false;
+  }
+  if(A1Tog == true) {
+    digitalWrite(Arm1, HIGH);
+    A1Tog = false;
+  }
+  if(A2Tog == true) {
+    digitalWrite(Arm2, HIGH);
+    A2Tog = false;
+  }
 }
