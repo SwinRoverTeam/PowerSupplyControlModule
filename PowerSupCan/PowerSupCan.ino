@@ -34,6 +34,7 @@ void setup() {
   pinMode(Arm2, OUTPUT);
   //Pins initalised 
   digitalWrite(ControlElec, HIGH); // Turns on 5.3V rail
+  Serial.begin(115200);
 
   while (CAN_OK != CAN.begin(CAN_1000KBPS))    // init can bus : baudrate = 1000k
   {
@@ -148,6 +149,7 @@ void loop() {
     }
   }
   if (millis() >= lastHB + 1000) {
+    Serial.println("sending HB");
     unsigned char stmp[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     lastHB = millis();
     // send data:  id = 0x00, standrad frame, data len = 8, stmp: data buf
@@ -165,6 +167,7 @@ void loop() {
     }
     
     CAN.sendMsgBuf(0x101, 0, 8, stmp);
+    Serial.println(millis());
   }
   unsigned char len = 0;
   unsigned char buf[8];
