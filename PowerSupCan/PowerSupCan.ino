@@ -1,5 +1,6 @@
 #include <SPI.h>
 #include "mcp_can.h"
+#include "SwinCAN.h"
 
 const int SPI_CS_PIN = 17;              // CANBed V1
 
@@ -9,6 +10,13 @@ const int SPI_CS_PIN = 17;              // CANBed V1
 #define Arm1 8
 #define Arm2 9
 
+#define HBPeriod 1000
+
+unsigned long MotorLast = 0;
+unsigned long ArmLast = 0;
+unsigned long cubeLast = 0;
+unsigned long lastHB = 0;
+
 MCP_CAN CAN(SPI_CS_PIN); 
 
 bool ElecTog = false;
@@ -16,6 +24,7 @@ bool MLTog = false;
 bool MRTog = false;
 bool A1Tog = false;
 bool A2Tog = false;
+bool timerSet = false;
 
 void setup() {
   pinMode(ControlElec, OUTPUT);
@@ -35,8 +44,113 @@ void setup() {
 
 }
 
-void loop() {
+void heartbeat(int id) {
+  if (id & 0xF00 == cube) {
+    cubeLast = millis();
+  }
+}
 
+void setRelay(unsigned char msg[8]) {
+  //8 byte frame, bytes are assigned to
+  //7th - Control Elec
+  //6th - Motor Left
+  //5th - Motor Right
+  //4th - Arm 1
+  //3rd - Arm 2
+  //2nd -> 0th - unused
+  //
+  if(msg[7] == 0x1) {
+    digitalWrite(ControlElec, LOW);
+    ElecTog = true;
+    if(timerSet == false) {setTimer();}
+  }
+  else if (msg[6] = 0x1) {
+    digitalWrite(MotorLeft, LOW);
+    MLTog = true;
+    if(timerSet == false) {setTimer();}
+  }
+  else if (msg[5] = 0x1) {
+    digitalWrite(MotorRight, LOW);
+    MRTog = true;
+    if(timerSet == false) {setTimer();}
+  }
+  else if (msg[4] = 0x1) {
+    digitalWrite(Arm1, LOW);
+    A1Tog = true;
+    if(timerSet == false) {setTimer();}
+  }
+  else if (msg[3] = 0x1) {
+    digitalWrite(Arm2, LOW);
+    A2Tog = true;
+    if(timerSet == false) {setTimer();}
+  }
+  else if (msg[2] = 0x1) {
+    //Placeholder
+  }
+  else if (msg[1] = 0x1) {
+    //Placeholder
+  }
+  else if (msg[0] = 0x1) {
+    //Placeholder
+  }
+}
+
+void setTimer() {
+  //0.5Hz timer
+  cli();
+
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCNT1 = 0;
+
+  OCR1A = 31249;
+
+  TCCR1B |= (1 << WGM12);
+
+  TCCR1B |= (1 << CS12) | (1 << CS10);
+
+  TIMSK1 |= (1 << OCIE1A);
+
+  sei();
+}
+
+ISR(TIMER1_COMPA_vect) {
+  timerSet = false;
+  if(ElecTog == true) {
+    digitalWrite(ControlElec, HIGH);
+    ElecTog = false;
+  }
+  if(MRTog == true) {
+    digitalWrite(MotorRight, HIGH);
+    MRTog = false;
+  }
+  if(MLTog == true) {
+    digitalWrite(MotorLeft, HIGH);
+    MLTog = false;
+  }
+  if(A1Tog == true) {
+    digitalWrite(Arm1, HIGH);
+    A1Tog = false;
+  }
+  if(A2Tog == true) {
+    digitalWrite(Arm2, HIGH);
+    A2Tog = false;
+  }
+  timerSet = false;
+}
+
+void loop() {
+  if (millis() >= (cubeLast + 10 * HBPeriod)) {
+    digitalWrite(ControlElec, LOW);
+    ElecTog = true;
+    if(timerSet == false) {
+      setTimer();
+    }
+  }
+  if (millis() >= lastHB + 1000) {
+    lastHB = millis();
+    //Send HB
+  }
   unsigned char len = 0;
   unsigned char buf[8];
 
@@ -46,85 +160,11 @@ void loop() {
 
     unsigned long canId = CAN.getCanId();
 
-    unsigned char canCMD = buf[0];
-
-    switch (canCMD) {
-      case 0x10: 
-        //SwinCan.ReplyHeart(--NodeId--)
-        Serial.println("Reply heart");
-      break;
-      case 0x30:
-        //SwinCan.ReplyStatus(--NodeId--)
-        Serial.println("Reply Status");
-      break;
-      case 0x50:
-        if(buf[7]&0b1 == 1) { //Cycle 5.3V
-        digitalWrite(ControlElec, LOW);
-        ElecTog = true;
-        }
-        if((buf[7]&0b10) >> 1 == 1) { //Cycle Motor Left
-          digitalWrite(MotorLeft, LOW);
-          MLTog = true;
-        }
-        if((buf[7]&0b100) >> 2 == 1) { //Cycle Motor Right
-          digitalWrite(MotorRight, LOW);
-          MRTog = true;
-        }
-        if((buf[7]&0b1000) >> 3 == 1) { //Cycle Arm 1
-          digitalWrite(Arm1, LOW);
-          A1Tog = true;
-        }
-        if((buf[7]&0b10000) >> 4 == 1) { //Cycle Arm 2
-          digitalWrite(Arm2, LOW);
-          A2Tog = true;
-        }
-        //0.5Hz timer
-        cli();
-
-        TCCR1A = 0;
-        TCCR1B = 0;
-        TCNT1 = 0;
-
-        OCR1A = 31249;
-
-        TCCR1B |= (1 << WGM12);
-
-        TCCR1B |= (1 << CS12) | (1 << CS10);
-
-        TIMSK1 |= (1 << OCIE1A);
-
-        sei();
-        
-        //SwinCan.ReplyRelay(--NodeId--)
-        Serial.println("Reply Relay");
-      break;
-      case 0x60:
-        //SwinCan.Error(--NodeId--)
-        Serial.println("Error");
-      break;
+    if ((canId & heart_beat) == 0x1) { //Heartbeat message
+      heartbeat(canId);
     }
-  }
-}
-
-ISR(TIMER1_COMPA_vect) {
-  if(ElecTog == true) {
-    digitalWrite(ControlElec, HIGH);
-    ElecTog = false;
-  }
-  if(MLTog == true) {
-    digitalWrite(MotorLeft, HIGH);
-    MLTog = false;
-  }
-  if(MRTog == true) {
-    digitalWrite(MotorRight, HIGH);
-    MRTog = false;
-  }
-  if(A1Tog == true) {
-    digitalWrite(Arm1, HIGH);
-    A1Tog = false;
-  }
-  if(A2Tog == true) {
-    digitalWrite(Arm2, HIGH);
-    A2Tog = false;
+    if (canId == (cube + set_relay)) {
+      setRelay(buf[8]);
+    }
   }
 }
