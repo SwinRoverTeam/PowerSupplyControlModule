@@ -9,21 +9,18 @@ const int SPI_CS_PIN = 17;              // CANBed V1
 #define MotorRight 6
 #define Arm1 8
 #define Arm2 9
+#define Jetson 10
 
-#define HBPeriod 1000
 
-unsigned long MotorLast = 0;
-unsigned long ArmLast = 0;
-unsigned long cubeLast = 0;
-unsigned long lastHB = 0;
+MCP_CAN CAN(SPI_CS_PIN);
 
-MCP_CAN CAN(SPI_CS_PIN); 
 
 bool ElecTog = false;
 bool MLTog = false;
 bool MRTog = false;
 bool A1Tog = false;
 bool A2Tog = false;
+bool JSTog = false;
 bool timerSet = false;
 
 void setup() {
@@ -32,8 +29,14 @@ void setup() {
   pinMode(MotorRight, OUTPUT); 
   pinMode(Arm1, OUTPUT); 
   pinMode(Arm2, OUTPUT);
+  pinMode(Jetson, OUTPUT);
   //Pins initalised 
   digitalWrite(ControlElec, HIGH); // Turns on 5.3V rail
+  digitalWrite(MotorLeft, HIGH);
+  digitalWrite(MotorRight, HIGH);
+  digitalWrite(Arm1, HIGH);
+  digitalWrite(Arm2, HIGH);
+  digitalWrite(Jetson, HIGH);
   Serial.begin(115200);
 
   while (CAN_OK != CAN.begin(CAN_1000KBPS))    // init can bus : baudrate = 1000k
@@ -45,12 +48,6 @@ void setup() {
 
 }
 
-void heartbeat(int id) {
-  if (id & 0xF00 == cube) {
-    cubeLast = millis();
-  }
-}
-
 void setRelay(unsigned char msg[8]) {
   //8 byte frame, bytes are assigned to
   //7th - Control Elec
@@ -58,7 +55,8 @@ void setRelay(unsigned char msg[8]) {
   //5th - Motor Right
   //4th - Arm 1
   //3rd - Arm 2
-  //2nd -> 0th - unused
+  //2nd - Jetson
+  //1st -> 0th - unused
   //
   if(msg[7] == 0x1) {
     digitalWrite(ControlElec, LOW);
@@ -86,7 +84,9 @@ void setRelay(unsigned char msg[8]) {
     if(timerSet == false) {setTimer();}
   }
   else if (msg[2] = 0x1) {
-    //Placeholder
+    digitalWrite(Jetson, LOW);
+    JSTog = true;
+    if(timerSet == false) {setTimer();}
   }
   else if (msg[1] = 0x1) {
     //Placeholder
@@ -98,8 +98,6 @@ void setRelay(unsigned char msg[8]) {
 
 void setTimer() {
   //0.5Hz timer
-  cli();
-
   TCCR1A = 0;
   TCCR1B = 0;
   TCNT1 = 0;
@@ -111,8 +109,6 @@ void setTimer() {
   TCCR1B |= (1 << CS12) | (1 << CS10);
 
   TIMSK1 |= (1 << OCIE1A);
-
-  sei();
 }
 
 ISR(TIMER1_COMPA_vect) {
@@ -141,34 +137,6 @@ ISR(TIMER1_COMPA_vect) {
 }
 
 void loop() {
-  if (millis() >= (cubeLast + 10 * HBPeriod)) {
-    digitalWrite(ControlElec, LOW);
-    ElecTog = true;
-    if(timerSet == false) {
-      setTimer();
-    }
-  }
-  if (millis() >= lastHB + 1000) {
-    Serial.println("sending HB");
-    unsigned char stmp[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-    lastHB = millis();
-    // send data:  id = 0x00, standrad frame, data len = 8, stmp: data buf
-    stmp[7] = stmp[7]+1;
-    if(stmp[7] == 100)
-    {
-      stmp[7] = 0;
-      stmp[6] = stmp[6] + 1;
-      
-      if(stmp[6] == 100)
-      {
-        stmp[6] = 0;
-        stmp[5] = stmp[6] + 1;
-      }
-    }
-    
-    CAN.sendMsgBuf(0x101, 0, 8, stmp);
-    Serial.println(millis());
-  }
   unsigned char len = 0;
   unsigned char buf[8];
 
@@ -177,10 +145,6 @@ void loop() {
     CAN.readMsgBuf(&len, buf);    // read data,  len: data length, buf: data buf
 
     unsigned long canId = CAN.getCanId();
-
-    if ((canId & heart_beat) == 0x1) { //Heartbeat message
-      heartbeat(canId);
-    }
     if (canId == (cube + set_relay)) {
       setRelay(buf[8]);
     }
