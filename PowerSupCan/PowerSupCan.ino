@@ -1,6 +1,6 @@
 #include <SPI.h>
 #include "mcp_can.h"
-#include "SwinCAN.h"
+#include <swinCan.h>
 
 const int SPI_CS_PIN = 17;              // CANBed V1
 
@@ -10,6 +10,8 @@ const int SPI_CS_PIN = 17;              // CANBed V1
 #define Arm1 8
 #define Arm2 9
 #define Jetson 10
+
+#define HEARTBEAT_TIMEOUT 20000
 
 
 MCP_CAN CAN(SPI_CS_PIN);
@@ -22,6 +24,8 @@ bool A1Tog = false;
 bool A2Tog = false;
 bool JSTog = false;
 bool timerSet = false;
+
+long lastContact;
 
 void setup() {
   pinMode(ControlElec, OUTPUT);
@@ -46,6 +50,9 @@ void setup() {
   }
   Serial.println("CAN BUS OK!");
 
+  delay(20000);
+  lastContact = millis();
+
 }
 
 void setRelay(unsigned char msg[8]) {
@@ -61,37 +68,49 @@ void setRelay(unsigned char msg[8]) {
   if(msg[7] == 0x1) {
     digitalWrite(ControlElec, LOW);
     ElecTog = true;
-    if(timerSet == false) {setTimer();}
+    if(timerSet == false) {
+      setTimer();
+    }
   }
-  else if (msg[6] = 0x1) {
+  if (msg[6] == 0x1) {
     digitalWrite(MotorLeft, LOW);
     MLTog = true;
-    if(timerSet == false) {setTimer();}
+    if(timerSet == false) {
+      setTimer();
+    }
   }
-  else if (msg[5] = 0x1) {
+  if (msg[5] == 0x1) {
     digitalWrite(MotorRight, LOW);
     MRTog = true;
-    if(timerSet == false) {setTimer();}
+    if(timerSet == false) {
+      setTimer();
+    }
   }
-  else if (msg[4] = 0x1) {
+  if (msg[4] == 0x1) {
     digitalWrite(Arm1, LOW);
     A1Tog = true;
-    if(timerSet == false) {setTimer();}
+    if(timerSet == false) {
+      setTimer();
+    }
   }
-  else if (msg[3] = 0x1) {
+  if (msg[3] == 0x1) {
     digitalWrite(Arm2, LOW);
     A2Tog = true;
-    if(timerSet == false) {setTimer();}
+    if(timerSet == false) {
+      setTimer();
+    }
   }
-  else if (msg[2] = 0x1) {
+  if (msg[2] == 0x1) {
     digitalWrite(Jetson, LOW);
     JSTog = true;
-    if(timerSet == false) {setTimer();}
+    if(timerSet == false) {
+      setTimer();
+    }
   }
-  else if (msg[1] = 0x1) {
+  if (msg[1] == 0x1) {
     //Placeholder
   }
-  else if (msg[0] = 0x1) {
+  if (msg[0] == 0x1) {
     //Placeholder
   }
 }
@@ -134,11 +153,19 @@ ISR(TIMER1_COMPA_vect) {
     A2Tog = false;
   }
   timerSet = false;
+  delay(10000);
 }
 
 void loop() {
+  
   unsigned char len = 0;
   unsigned char buf[8];
+  // if (lastContact + HEARTBEAT_TIMEOUT < millis()) {
+  //   Serial.println("No heartbeat for too long");
+  //   unsigned char flickAll[8] = {0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1};
+  //   setRelay(flickAll);
+  //   lastContact = millis();
+  // }
 
   if(CAN_MSGAVAIL == CAN.checkReceive())            // check if data coming
   {
@@ -148,5 +175,9 @@ void loop() {
     if (canId == (cube + set_relay)) {
       setRelay(buf[8]);
     }
+    // if (canId == (cube + heart_beat)) {
+    //   lastContact = millis();
+    //   Serial.println("Rec HB");
+    // }
   }
 }
